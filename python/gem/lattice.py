@@ -209,6 +209,11 @@ class Lattice():
         if not isinstance(Fragments_list, list) or not all(isinstance(F, Fragment) for F in Fragments_list):
             raise TypeError(f"Fragments_list must be a list of Fragment objects")
         if T < 0.0: raise ValueError("Temperature T must be non-negative")
+        if any(F.nambu for F in Fragments_list):
+            # the quasiparticle count is the transformed particle number, i.e. S_z,
+            # not the physical filling
+            raise NotImplementedError("fit_mu_quasiparticle does not support Nambu fragments: "
+                                      "use fit_mu(..., mode='fragment')")
         nimp_tot = sum(F.nimp for F in Fragments_list)
         nbath_tot = sum(F.nbath for F in Fragments_list)
 

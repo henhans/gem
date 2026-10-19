@@ -25,6 +25,7 @@ Core Modules
    gem.fragment
    gem.lattice
    gem.solvers
+   gem.nambu
 
 Everything is expressed in **spin-orbital** indices, with spin as the *fastest*
 index: level ``2*a`` is the down spin of orbital ``a`` and level ``2*a+1`` is its
@@ -91,6 +92,11 @@ It is constructed as::
    * - ``verbose``
      - int, default ``0``
      - Verbosity of the printout; maximum for ``verbose >= 3``.
+   * - ``nambu``
+     - bool, default ``False``
+     - The fragment is written in the Nambu basis of singlet superconductivity
+       (see :ref:`superconductivity`): the chemical potential couples to
+       :math:`\tau_3` and ``nfill`` is the physical filling.
 
 All four parameter matrices are shape-validated, so a wrongly sized array raises
 immediately. Passing the converged matrices of a previous run is the standard way
@@ -116,6 +122,41 @@ The key methods are:
 - :meth:`~gem.fragment.Fragment.load_fragment` — loads the fragment's parameters from a file.
 
 
+
+.. _superconductivity:
+
+Superconductivity
+-----------------
+
+Singlet superconductivity is treated with the particle-hole transformation of
+the odd (spin-down) spin-orbitals, :math:`c_{k\downarrow} \to d^\dagger_{-k\downarrow}`,
+implemented in :mod:`gem.nambu`. It turns the BdG problem into a particle-number
+conserving one for the Nambu spinor :math:`(c_{k\uparrow}, d_{k\downarrow})`, so
+that lattice, fragments and solvers are used unchanged: the anomalous parts of
+:math:`R`, :math:`\Lambda`, :math:`D` and :math:`\Lambda_c` are their
+:math:`\uparrow d` blocks, and the conserved transformed particle number is the
+physical :math:`S_z`. A calculation needs
+
+- the transformed dispersion, ``eks_n, _ = nambu_one_body(eks)``;
+- the transformed local Hamiltonian, optionally with a pairing field
+  :math:`\Delta_{ab} c^\dagger_{a\uparrow} c^\dagger_{b\downarrow} + \text{h.c.}`,
+  ``eloc_n, U_n, e0 = nambu_local(eloc, Utensor, pairing=Delta)``;
+- a fragment ``Fragment(nimp, nbath, eloc_n, U_n, solver, nambu=True)``, with
+  a solver that conserves ``Ntot`` only (``use_Sz=False``); ``N_sector=ntot//2``
+  selects physical :math:`S_z = 0`;
+- the filling fixed with ``lattice.fit_mu(..., mode='fragment')``: the
+  quasiparticle mode counts the transformed particles and is refused.
+
+Physical density matrices and the anomalous amplitude
+:math:`F_{ab} = \langle c^\dagger_{a\uparrow} c^\dagger_{b\downarrow} \rangle`
+are recovered with :func:`~gem.nambu.nambu_density_matrix`. Equal-spin
+(triplet :math:`S_z = \pm 1`) pairing and spin-flip terms cannot be represented
+and are refused. ``use_Sz=True`` in the updates and
+:meth:`~gem.fragment.Fragment.impose_spin_SU2_symmetry` would mix the spin-up
+particles with the spin-down holes and raise an error for a Nambu fragment; a
+non-magnetic solution is imposed with
+:meth:`~gem.fragment.Fragment.impose_nambu_spin_symmetry` instead. See
+:ref:`E4 <example_E4>` for a complete calculation.
 
 ``lattice``
 -----------------------------------------

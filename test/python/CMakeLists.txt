@@ -23,6 +23,7 @@ set(all_tests
   test_lattice_mpi
   test_save_load_fragment
   test_save_load_lattice
+  test_nambu
 )
 
 foreach(test ${all_tests})

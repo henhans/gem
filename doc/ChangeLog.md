@@ -2,6 +2,16 @@
 
 # Changelog
 
+## Unreleased
+
+* Singlet superconductivity through the Nambu (spin-down particle-hole) transformation: new module `gem.nambu` and `Fragment(..., nambu=True)`.
+* Example E4: d-wave superconductivity of the 2x2 cluster Hubbard model.
+
+## Unreleased
+
+* Singlet superconductivity through the Nambu (spin-down particle-hole) transformation: new module `gem.nambu` and `Fragment(..., nambu=True)`.
+* Example E4: d-wave superconductivity of the 2x2 cluster Hubbard model.
+
 ## Version 1.0.0
 
 GEM version 1.0.0 is the first release for this project.

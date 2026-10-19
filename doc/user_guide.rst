@@ -305,4 +305,5 @@ Examples
    examples/exE1
    examples/exE2
    examples/exE3
+   examples/exE4
 

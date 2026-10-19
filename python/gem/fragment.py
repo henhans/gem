@@ -11,6 +11,7 @@ import numpy as np
 from .utilities import Hermitian_list, funcMat, denR, calc_Lambda, calc_Lambda_c
 from .delta_fit import update_self_energy_thermal_penalty, update_hybridization_thermal_penalty
 from .solvers.gem_solver import gemSolver
+from .nambu import nambu_charge
 import h5py
 
 
@@ -31,7 +32,7 @@ class Fragment():
                  eloc: np.ndarray, Utensor: np.ndarray,
                  solver,
                  Lambda=None,R=None,Lambda_c=None,D=None,
-                 verbose=0
+                 verbose=0, nambu=False
                   ):
         """
         Initialize the Fragment class with the given parameters.
@@ -46,6 +47,11 @@ class Fragment():
         :param Lambda_c: ndarray, optional. Hybridization parameters Lambda_c.
         :param D: ndarray, optional. Hybridization parameters D.
         :param verbose: int, optional. Level of verbosity.
+        :param nambu: bool, optional. The fragment is written in the Nambu basis of
+            singlet superconductivity, see :mod:`gem.nambu` (default: False).
+            ``eloc`` and ``Utensor`` must then be the transformed ones from
+            :func:`gem.nambu.nambu_local`; the chemical potential couples to
+            :math:`\tau_3` and ``nfill`` is the physical filling.
 
         """
 
@@ -54,6 +60,7 @@ class Fragment():
         if not isinstance(eloc, np.ndarray): raise TypeError(f"eloc must be ndarray, got {type(eloc)}")
         if not isinstance(Utensor, np.ndarray): raise TypeError(f"Utensor must be ndarray, got {type(Utensor)}")
         if not isinstance(verbose, int): raise TypeError(f"verbose must be int, got {type(verbose)}")
+        if not isinstance(nambu, (bool, np.bool_)): raise TypeError(f"nambu must be bool, got {type(nambu)}")
 
         if nbath % nimp != 0:
             raise ValueError(f"nbath must be a multiple of nimp, got nbath={nbath}, nimp={nimp}")
@@ -112,6 +119,10 @@ class Fragment():
 
         self.verb = verbose
 
+        # charge of each impurity spin-orbital: what the chemical potential couples to
+        self.nambu = bool(nambu)
+        self.charge = nambu_charge(nimp) if self.nambu else np.ones(nimp)
+
         #Create Hermitian list here and store
         #spinfull and spinless versions
         self.H_list,self.tH_list=Hermitian_list(nbath)
@@ -136,7 +147,7 @@ class Fragment():
         :param T: float, optional. Temperature (default: 0.0).
         """
         h1e = np.zeros((self.ntot,self.ntot), dtype=np.complex128)
-        h1e[:self.nimp,:self.nimp] = self.eloc - mu*np.eye(self.nimp)
+        h1e[:self.nimp,:self.nimp] = self.eloc - mu*np.diag(self.charge)
         h1e[:self.nimp,self.nimp:] = self.D.T
         h1e[self.nimp:,self.nimp:] = -self.Lambda_c
         h1e[self.nimp:,:self.nimp] = self.D.conj()
@@ -145,7 +156,7 @@ class Fragment():
             print(f"Solving embedding problem with solver  {self.solver.type}")
             print(" Temperature T =", T)
 
-        self.solver.build_Hemb(self.D, self.eloc- mu*np.eye(self.nimp), self.Lambda_c, self.Utensor)
+        self.solver.build_Hemb(self.D, self.eloc- mu*np.diag(self.charge), self.Lambda_c, self.Utensor)
 
         if(T>=0.0):
             self.solver.solve_Hemb(T=T, verbose=self.verb )
@@ -155,7 +166,10 @@ class Fragment():
         self.denMat = self.solver.calc_density_matrix()
         fdagf = self.denMat[self.nimp:,self.nimp:]
         self.Delta_aim = np.eye(self.nbath) - fdagf
-        self.nfill  = np.trace( self.denMat[:self.nimp,:self.nimp] )
+        self.nfill  = np.dot( self.charge, np.diag(self.denMat[:self.nimp,:self.nimp]) )
+        if self.nambu:
+            # each spin-down orbital is a hole: n_dn = 1 - n_d
+            self.nfill += self.nimp//2
         self.E2loc  = self.solver.compute_E2loc()
 
     def update_self_energy(self, T=0.0, move_pen=1e-6, use_Sz=False, tol=1e-9):
@@ -174,6 +188,8 @@ class Fragment():
         fdagf = self.denMat[self.nimp:,self.nimp:]
         self.Delta_aim = np.eye(self.nbath) - fdagf
 
+        if use_Sz and self.nambu:
+            raise ValueError("use_Sz=True would drop the anomalous (up-d) blocks of a Nambu fragment")
         sstep = 2 if use_Sz else 1
         L_s=[]; R_s=[]
         if T > 0.0:
@@ -212,6 +228,8 @@ class Fragment():
             D: ndarray. Updated hybridization parameter D.
             Lambda_c: ndarray. Updated hybridization parameter Lambda_c.
         '''
+        if use_Sz and self.nambu:
+            raise ValueError("use_Sz=True would drop the anomalous (up-d) blocks of a Nambu fragment")
         sstep = 2 if use_Sz else 1
         D_s=[]; Lc_s=[]
         if T > 0.0:
@@ -266,6 +284,7 @@ class Fragment():
             f.create_dataset('Lambda_c', data=self.Lambda_c)
             f.create_dataset('D', data=self.D)
             f.create_dataset('verbose', data=self.verb)
+            f.create_dataset('nambu', data=self.nambu)
 
     @staticmethod
     def load_fragment(filename,solver):
@@ -289,8 +308,9 @@ class Fragment():
             Lambda_c = f['Lambda_c'][()]
             D = f['D'][()]
             verbose = int(f['verbose'][()])
+            nambu = bool(f['nambu'][()]) if 'nambu' in f else False
         
-        return Fragment(nimp, nbath, eloc, Utensor, solver, Lambda, R, Lambda_c, D, verbose)
+        return Fragment(nimp, nbath, eloc, Utensor, solver, Lambda, R, Lambda_c, D, verbose, nambu=nambu)
 
 
 
@@ -320,7 +340,7 @@ class Fragment():
         Ainv = np.linalg.inv(z*I_m - self.Lambda)
         M = self.R.conj().T @ Ainv @ self.R
 
-        return (z)*I_nu - np.linalg.inv(M) - self.eloc + mu*I_nu
+        return (z)*I_nu - np.linalg.inv(M) - self.eloc + mu*np.diag(self.charge)
 
     def compute_Z(self, mu=0.0, z0=0.0, h=1e-4):
         """
@@ -340,7 +360,7 @@ class Fragment():
         def Sigma(z):
             Ainv = np.linalg.inv(z*I_m - self.Lambda)
             M = self.R.conj().T @ Ainv @ self.R
-            return (z)*I_nu - np.linalg.inv(M) - self.eloc + mu*I_nu
+            return (z)*I_nu - np.linalg.inv(M) - self.eloc + mu*np.diag(self.charge)
 
         # centered finite difference derivative
         dSigma = (Sigma(z0 + h) - Sigma(z0 - h)) / (2*h)
@@ -352,10 +372,38 @@ class Fragment():
         """
         Impose spin SU(2) symmetry on the self-energy and hybridization parameters by averaging over spin components.
         """
+        if self.nambu:
+            raise ValueError("impose_spin_SU2_symmetry does not apply to a Nambu fragment: "
+                             "its odd spin-orbitals are spin-down holes")
         self.R = 0.5*np.kron( self.R[::2,::2] + self.R[1::2,1::2], np.eye(2) )
         self.Lambda = 0.5*np.kron( self.Lambda[::2,::2] + self.Lambda[1::2,1::2], np.eye(2) )
         self.Lambda_c = 0.5*np.kron( self.Lambda_c[::2,::2] + self.Lambda_c[1::2,1::2], np.eye(2) )
         self.D = 0.5*np.kron( self.D[::2,::2] + self.D[1::2,1::2], np.eye(2) )
+
+    def impose_nambu_spin_symmetry(self):
+        r"""
+        Impose the absence of magnetism on the parameters of a Nambu fragment
+        (:mod:`gem.nambu`), the counterpart of :meth:`impose_spin_SU2_symmetry`.
+
+        A :math:`\pi` spin rotation about :math:`y` acts on the Nambu spinor as
+        :math:`\psi \to K \psi^\dagger`, with :math:`K = \oplus_a \begin{pmatrix} 0 & 1 \\ -1 & 0 \end{pmatrix}`.
+        The parameters are projected onto the invariant ones,
+        :math:`R = K^T R^* K`, :math:`D = K^T D^* K`,
+        :math:`\Lambda = -K^T \Lambda^T K` and :math:`\Lambda_c = -K^T \Lambda_c^T K`,
+        which removes :math:`S_z` magnetization while keeping singlet pairing.
+        As for :meth:`impose_spin_SU2_symmetry`, the bath levels are assumed to
+        follow the spin structure of the impurity (bath level ``b`` has the spin of
+        ``b % 2``), which the default starting point and the updates preserve.
+        """
+        if not self.nambu:
+            raise ValueError("impose_nambu_spin_symmetry only applies to a Nambu fragment")
+        k = np.array([[0.0, 1.0], [-1.0, 0.0]])
+        Ki = np.kron(np.eye(self.nimp//2), k)
+        Kb = np.kron(np.eye(self.nbath//2), k)
+        self.R = 0.5*( self.R + Kb.T @ self.R.conj() @ Ki )
+        self.D = 0.5*( self.D + Kb.T @ self.D.conj() @ Ki )
+        self.Lambda = 0.5*( self.Lambda - Kb.T @ self.Lambda.T @ Kb )
+        self.Lambda_c = 0.5*( self.Lambda_c - Kb.T @ self.Lambda_c.T @ Kb )
 
     def impose_orbital_symmetry(self):
         """
