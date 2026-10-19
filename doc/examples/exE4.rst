@@ -97,7 +97,9 @@ Results
 
 Each scan takes about five minutes, and every filling converges to a
 residual below :math:`10^{-7}`. Panel (a) shows the d-wave order parameter of
-both branches, panel (b) the staggered moment of the AF + d-wave branch.
+both branches, panel (b) the staggered moment of the AF + d-wave branch, and
+panel (c) the energy difference
+:math:`E_{tot}(\text{AF + d-wave}) - E_{tot}(\text{pure d-wave})`.
 
 .. image:: ./images/figE4.png
    :width: 100%

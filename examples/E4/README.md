@@ -43,8 +43,9 @@ filling holding:
 
 `plot_dwave.py` reads whichever of the two files are present and writes
 `figE4.png`, the figure above. Panel (a) shows the d-wave order parameter of
-both branches, and panel (b) shows the staggered moment of the AF + d-wave
-branch.
+both branches, panel (b) the staggered moment of the AF + d-wave branch, and
+panel (c) the energy difference between the two branches,
+Etot(AF + d-wave) - Etot(pure d-wave).
 
 ## Model
 
