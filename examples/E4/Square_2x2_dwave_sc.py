@@ -6,9 +6,10 @@
 # transformation of gem.nambu: the BdG problem becomes a particle-number
 # conserving one and the usual GEM updates are used unchanged. A small
 # d-wave field selects the symmetry of the order parameter. With
-# paramagnetic=True the parameters are projected onto the non-magnetic ones:
-# without it the solution has antiferromagnetism coexisting with d-wave
-# superconductivity.
+# paramagnetic=True the parameters are projected onto the non-magnetic ones
+# (pure d-wave branch). With paramagnetic=False a staggered field is added
+# to the seed and the loop finds Neel antiferromagnetism coexisting with
+# d-wave superconductivity (AF+SC branch), of lower energy.
 # The paramagnetic d-wave solution is an unstable fixed point of the plain
 # mixing loop away from n=3.6 (for n <~ 3.4 the loop leaves it and stalls on
 # a non-solution), so R and Lambda are extrapolated with DIIS (gem.diis).
@@ -31,7 +32,7 @@ nbath = nimp * B
 ntot = nimp + nbath
 
 # Physical Parameters (n_list: electrons per cluster)
-U, t, field, seed_field = 8.0, -1.0, 1e-3, 5e-2
+U, t, field, seed_field, seed_stagger = 8.0, -1.0, 1e-3, 5e-2, 0.1
 # Two sweeps start from the solution at n=3.6: towards half filling, then
 # towards larger doping
 n_up = [3.6, 3.7, 3.8, 3.9, 4.0]
@@ -42,7 +43,7 @@ paramagnetic = True
 
 # Self-consistency Parameters
 itmax, tol, mix, nseed, nvec, Tsmearing, nk = 500, 1e-7, 0.3, 20, 8, 1e-5, 37
-h5_file = f'data_Square_2x2_dwave_U{U}.h5'
+h5_file = f'data_Square_2x2_dwave_U{U}' + ('' if paramagnetic else '_afm') + '.h5'
 
 
 def cluster_dispersion(nk, t):
@@ -87,6 +88,10 @@ eks_n, _ = nambu_one_body(eks)
 lattice = Lattice(eks_n)
 eloc_n, U_n, e0 = nambu_local(eloc, Utensor, pairing=field/np.sqrt(2)*dwave)
 eloc_seed, _, _ = nambu_local(eloc, Utensor, pairing=seed_field/np.sqrt(2)*dwave)
+if not paramagnetic:
+    # staggered field h*s_i*(n_{i,up} - n_{i,dn}) = h*s_i*(n_{i,up} + n_{i,d} - 1)
+    # in the Nambu basis, s_i = +1 on sites 0 and 3 and -1 on sites 1 and 2
+    eloc_seed = eloc_seed + seed_stagger*np.diag(np.repeat([1.0, -1.0, -1.0, 1.0], 2))
 _, h_U, e_U = nambu_interaction(Utensor)
 
 # N_sector=ntot//2: half-filled embedding <=> physical S_z = 0

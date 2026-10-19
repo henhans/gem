@@ -62,11 +62,10 @@ down to :math:`n = 2.9`. One iteration reads::
 :meth:`~gem.fragment.Fragment.impose_nambu_spin_symmetry` is the Nambu
 counterpart of :meth:`~gem.fragment.Fragment.impose_spin_SU2_symmetry`: it
 projects the parameters onto those invariant under a :math:`\pi` spin rotation,
-which removes magnetization and keeps singlet pairing. It is switched off with
-``paramagnetic = False``; near half filling the loop then flows to Néel
-antiferromagnetism coexisting with d-wave superconductivity, of lower energy
-(at :math:`n = 3.6`, :math:`E_{tot} = -2.658` instead of :math:`-2.539`,
-staggered moment :math:`0.52`).
+which removes magnetization and keeps singlet pairing. With
+``paramagnetic = False`` it is not applied, a staggered field is added to the
+seed, and the loop finds Néel antiferromagnetism coexisting with d-wave
+superconductivity; the results go to ``data_Square_2x2_dwave_U8.0_afm.h5``.
 
 For :math:`n \lesssim 3.4` the paramagnetic d-wave solution is an unstable
 fixed point of plain linear mixing, which leaves it and stalls on a state that
@@ -90,21 +89,35 @@ and the interaction has been normal ordered, the physical local energy is::
 
 The script stores :math:`\mu`, :math:`Z`, the order parameter, the largest
 local moment, the kinetic, potential and total energy, and the converged
-parameters for every filling in ``data_Square_2x2_dwave_U8.0.h5``;
-``plot_dwave.py`` draws the figure below from it.
+parameters for every filling in ``data_Square_2x2_dwave_U8.0.h5`` (or the
+``_afm`` file); ``plot_dwave.py`` draws the figure below from both.
 
 Results
 -------
 
-The whole scan takes about five minutes. Every filling converges to a residual
-below :math:`10^{-7}`, with zero local moment.
+Each scan takes about five minutes, and every filling converges to a
+residual below :math:`10^{-7}`. Panel (a) shows the d-wave order parameter of
+both branches, panel (b) the staggered moment of the AF + d-wave branch.
 
 .. image:: ./images/figE4.png
-   :width: 70%
+   :width: 100%
    :align: center
 
-The order parameter forms a dome with its maximum near :math:`n = 0.92` per
-site; the remnant at half filling is induced by the pairing field.
+On the pure d-wave branch the order parameter forms a dome with its maximum
+near :math:`n = 0.92` per site, and stays finite at half filling. Without the
+paramagnetic constraint the two branches coincide for :math:`n \le 0.80`; a
+staggered moment appears between :math:`n = 0.80` and :math:`0.825` and grows
+to :math:`0.81` at half filling. In this range antiferromagnetism and d-wave
+superconductivity coexist, with an energy below the pure d-wave branch by
+:math:`0.004` at :math:`n = 0.825` up to :math:`0.48` at half filling. The
+antiferromagnetism suppresses the superconductivity near half filling: the
+dome peaks lower and earlier (:math:`0.077` at :math:`n = 0.90`), and at half
+filling the solution is a Néel insulator with only the field-induced d-wave
+response (:math:`2\times10^{-4}`). Along this branch :math:`\mu` decreases
+with :math:`n`, a negative compressibility that points to phase separation
+between the Néel insulator and a more strongly doped state.
+
+The pure d-wave branch:
 
 .. list-table::
    :header-rows: 1
@@ -150,5 +163,5 @@ site; the remnant at half filling is induced by the pairing field.
      - 0.0329
      - -1.5229
 
-The complete table and the tests behind this example are in
-``examples/E4/README.md``.
+The complete tables of both branches and the tests behind this example are
+in ``examples/E4/README.md``.

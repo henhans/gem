@@ -3,14 +3,17 @@
 `Square_2x2_dwave_sc.py` computes the d-wave superconducting order parameter
 of the doped Hubbard model on the square lattice. It uses a 2x2 cluster
 fragment at B = 1 (cluster RISB), with U = 8|t|, at fillings from n = 2.9 to
-4.0 electrons per cluster. It shows the three ingredients of a
-superconducting calculation in GEM:
+4.0 electrons per cluster. Two solutions are followed: the pure d-wave
+superconductor (paramagnetic), and Neel antiferromagnetism coexisting with
+d-wave superconductivity (AF + d-wave), which is lower in energy near half
+filling. The example shows the three ingredients of a superconducting
+calculation in GEM:
 
 * the Nambu basis of `gem.nambu`;
 * the non-magnetic projection `Fragment.impose_nambu_spin_symmetry`;
 * DIIS extrapolation (`gem.diis`).
 
-![d-wave order parameter as a function of filling](../../doc/examples/images/figE4.png)
+![d-wave order parameter and staggered moment as a function of filling](../../doc/examples/images/figE4.png)
 
 ## Running
 
@@ -19,10 +22,15 @@ PYTHONPATH=/path/to/gem/python python3 Square_2x2_dwave_sc.py
 python3 plot_dwave.py
 ```
 
-The scan takes about 5 minutes on a laptop: about 30 iterations at the first
+The script computes the pure d-wave branch (`paramagnetic = True`). Set
+`paramagnetic = False` and run it again for the AF + d-wave branch.
+
+Each scan takes about 5 minutes on a laptop: about 30 iterations at the first
 filling and about 10 at each of the others. The embedding problem has 16
 levels, and the S_z = 0 sector has 12870 states. Results go to
-`data_Square_2x2_dwave_U8.0.h5`, with one group `n<n>` per filling holding:
+`data_Square_2x2_dwave_U8.0.h5` (pure d-wave) or
+`data_Square_2x2_dwave_U8.0_afm.h5` (AF + d-wave), with one group `n<n>` per
+filling holding:
 
 | dataset | meaning |
 |---|---|
@@ -33,7 +41,10 @@ levels, and the S_z = 0 sector has 12870 states. Results go to
 | `Ekin`, `Epot`, `Etot` | kinetic, interaction and total energy per cluster, without -mu N |
 | `R`, `Lambda`, `denMat` | converged parameters and impurity density matrix, in the Nambu basis |
 
-`plot_dwave.py` reads that file and writes `figE4.png`, the figure above.
+`plot_dwave.py` reads whichever of the two files are present and writes
+`figE4.png`, the figure above. Panel (a) shows the d-wave order parameter of
+both branches, and panel (b) shows the staggered moment of the AF + d-wave
+branch.
 
 ## Model
 
@@ -107,20 +118,20 @@ for it in range(itmax):
 (The `append` line is schematic: the script stacks the pairs into arrays.)
 
 **Seed.** At the first filling (n = 3.6) the loop starts with 20 plain mixing
-iterations under a larger pairing field (`seed_field = 0.05`). Every later
-filling starts from the previous solution. The scan runs in two sweeps from
-n = 3.6, one up to half filling and one down to n = 2.9.
+iterations under a larger pairing field (`seed_field = 0.05`). For the
+AF + d-wave branch a staggered field `seed_stagger = 0.1` on the
+checkerboard (+ on sites 0 and 3, - on sites 1 and 2) is added to the seed.
+Every later filling starts from the previous solution. The scan runs in two
+sweeps from n = 3.6, one up to half filling and one down to n = 2.9.
 
 **Paramagnetic projection.** `impose_nambu_spin_symmetry` is the Nambu
 counterpart of `impose_spin_SU2_symmetry`. A pi spin rotation acts on the
 Nambu spinor as psi -> K psi^dag, with K = diag([[0,1],[-1,0]], ...). The
 projection keeps the invariant parameters, R = K^T R^* K, D = K^T D^* K,
 Lambda = -K^T Lambda^T K and Lambda_c = -K^T Lambda_c^T K, which removes
-S_z magnetization and keeps singlet pairing. Without it
-(`paramagnetic = False`) the loop flows to Neel antiferromagnetism coexisting
-with d-wave pairing near half filling. That state has a lower energy: at
-n = 3.6 the staggered moment is 0.52 and Etot = -2.658, against -2.539 for
-the paramagnetic state.
+S_z magnetization and keeps singlet pairing. With `paramagnetic = False` it
+is not applied, and the loop finds the AF + d-wave solution (see
+[Results](#results)).
 
 **DIIS.** The paramagnetic d-wave solution is an unstable fixed point of the
 plain mixing loop for n <~ 3.4. Linear mixing leaves it: the deviation grows
@@ -133,6 +144,8 @@ The script uses the gauge in which R is Hermitian (polar decomposition, B = 1),
 which also preserves the spin structure that the projection relies on.
 
 ## Results
+
+### Pure d-wave branch (`paramagnetic = True`)
 
 | n per cluster | n per site | mu | Z | d-wave | Etot |
 |---|---|---|---|---|---|
@@ -149,9 +162,56 @@ which also preserves the spin structure that the projection relies on.
 | 3.9 | 0.975 | 2.5901 | 0.6400 | 0.0626 | -1.8176 |
 | 4.0 | 1.000 | 4.0000 | 0.6587 | 0.0329 | -1.5229 |
 
-The order parameter forms a dome with its maximum near n = 0.92 per site.
-At half filling it does not vanish: the remnant is induced by the pairing
-field. All points converge to a residual below 1e-7 with zero local moment.
+The order parameter forms a dome with its maximum near n = 0.92 per site,
+and it stays finite (0.033) at half filling. All points converge to a
+residual below 1e-7 with zero local moment.
+
+### AF + d-wave branch (`paramagnetic = False`)
+
+Dropping the paramagnetic constraint lets the Neel order of the half-filled
+Mott insulator develop. Energies are compared with the pure d-wave branch at
+the same filling, dE = Etot(AF + d-wave) - Etot(pure d-wave):
+
+| n per site | staggered moment | d-wave | Etot | mu | dE |
+|---|---|---|---|---|---|
+| 0.725 | 0 | 0.0034 | -3.7921 | 1.1995 | 0 |
+| 0.750 | 0 | 0.0051 | -3.6634 | 1.3851 | 0 |
+| 0.775 | 0 | 0.0079 | -3.5160 | 1.5576 | 0 |
+| 0.800 | 0 | 0.0155 | -3.3515 | 1.7357 | 0 |
+| 0.825 | 0.205 | 0.0356 | -3.1724 | 1.7880 | -0.0038 |
+| 0.850 | 0.337 | 0.0585 | -2.9962 | 1.7327 | -0.0264 |
+| 0.875 | 0.432 | 0.0723 | -2.8252 | 1.6907 | -0.0660 |
+| 0.900 | 0.516 | 0.0771 | -2.6576 | 1.6623 | -0.1185 |
+| 0.925 | 0.594 | 0.0753 | -2.4924 | 1.6428 | -0.1833 |
+| 0.950 | 0.669 | 0.0672 | -2.3289 | 1.6274 | -0.2600 |
+| 0.975 | 0.741 | 0.0511 | -2.1669 | 1.6131 | -0.3493 |
+| 1.000 | 0.808 | 0.0002 | -2.0062 | 3.9955 | -0.4832 |
+
+Compared with the pure d-wave branch:
+
+* **Onset of antiferromagnetism.** For n <= 0.80 per site the two branches
+  are the same solution. The staggered moment appears between n = 0.80 and
+  0.825, then grows steadily to 0.81 at half filling.
+* **Coexistence.** For 0.825 <= n < 1 antiferromagnetism and d-wave
+  superconductivity coexist. Wherever the moment is finite, the AF + d-wave
+  state is lower in energy. The gain grows from 0.004 at n = 0.825 to 0.48 at
+  half filling.
+* **Superconductivity is suppressed near half filling.** At low moment the
+  d-wave order is slightly enhanced (0.0585 against 0.0536 at n = 0.85). The
+  dome then peaks lower and earlier (0.077 at n = 0.90, against 0.080 at
+  0.925), and the order falls quickly as the moment grows. At half filling
+  the solution is a pure Neel insulator: the d-wave value of 2e-4 is just the
+  response to the 1e-3 pairing field. The finite d-wave order of the pure
+  d-wave branch at half filling is therefore an artefact of the paramagnetic
+  constraint.
+* **Negative compressibility.** On the AF + d-wave branch mu decreases as n
+  increases, from 1.788 at n = 0.825 to 1.613 at n = 0.975. A uniform state
+  with dn/dmu < 0 is thermodynamically unstable. The doped AF + d-wave state
+  is therefore expected to phase-separate into the half-filled Neel insulator
+  and a more strongly doped phase; a Maxwell construction on Etot(n) would
+  locate the two coexisting fillings. At half filling mu jumps into the Mott
+  gap: any mu inside the gap gives n = 1, so the value 3.9955 is only one
+  point of that range.
 
 ## Tests
 
