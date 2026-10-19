@@ -4,11 +4,14 @@
 # lattice, described with a 2x2 cluster fragment (cluster RISB, B=1).
 # Singlet pairing is treated with the Nambu (spin-down particle-hole)
 # transformation of gem.nambu: the BdG problem becomes a particle-number
-# conserving one and the usual GEM loop is used unchanged. The filling is
-# fixed with fit_mu(mode='fragment'); a small d-wave field selects the
-# symmetry of the order parameter. With paramagnetic=True the parameters are
-# projected onto the non-magnetic ones at every iteration: without it the
-# loop flows to antiferromagnetism coexisting with d-wave superconductivity.
+# conserving one and the usual GEM updates are used unchanged. A small
+# d-wave field selects the symmetry of the order parameter. With
+# paramagnetic=True the parameters are projected onto the non-magnetic ones:
+# without it the solution has antiferromagnetism coexisting with d-wave
+# superconductivity.
+# The paramagnetic d-wave solution is an unstable fixed point of the plain
+# mixing loop away from n=3.6 (for n <~ 3.4 the loop leaves it and stalls on
+# a non-solution), so R and Lambda are extrapolated with DIIS (gem.diis).
 ######################################################################
 
 import numpy as np
@@ -17,6 +20,7 @@ from gem.lattice import Lattice
 from gem.solvers.simple_ed import SimpleED
 from gem.nambu import nambu_one_body, nambu_local, nambu_density_matrix, nambu_interaction
 import h5py
+from gem.diis import DIIS
 
 # 2x2 cluster:   2 3
 #                0 1
@@ -28,12 +32,16 @@ ntot = nimp + nbath
 
 # Physical Parameters (n_list: electrons per cluster)
 U, t, field, seed_field = 8.0, -1.0, 1e-3, 5e-2
-n_list = [3.6, 3.7, 3.8, 3.9, 4.0]
+# Two sweeps start from the solution at n=3.6: towards half filling, then
+# towards larger doping
+n_up = [3.6, 3.7, 3.8, 3.9, 4.0]
+n_down = [3.5, 3.4, 3.3, 3.2, 3.1, 3.0, 2.9]
+n_list = n_up + n_down
 
 paramagnetic = True
 
 # Self-consistency Parameters
-itmax, tol, mix, nseed, Tsmearing, nk = 500, 1e-6, 0.3, 20, 1e-5, 37
+itmax, tol, mix, nseed, nvec, Tsmearing, nk = 500, 1e-7, 0.3, 20, 8, 1e-5, 37
 h5_file = f'data_Square_2x2_dwave_U{U}.h5'
 
 
@@ -86,16 +94,34 @@ edsolver = SimpleED(ntot, use_Ntot=True, N_sector=ntot//2)
 fragment = Fragment(nimp, nbath, eloc_n, U_n, edsolver, nambu=True)
 
 
+def hermitian_gauge(R, Lambda):
+    '''Bath gauge (B=1) in which R is Hermitian: R = U P -> (U^dag R, U^dag Lambda U).
+    DIIS combines R and Lambda of different iterations, which requires a fixed
+    gauge; this one also keeps the spin structure used by
+    impose_nambu_spin_symmetry.'''
+    W, _, Vh = np.linalg.svd(R)
+    Ug = W @ Vh
+    return Ug.conj().T @ R, Ug.conj().T @ Lambda @ Ug
+
+
 with h5py.File(h5_file, 'a') as _:
     pass
 
 mu = U/2
+fragment.R, fragment.Lambda = hermitian_gauge(fragment.R, fragment.Lambda)
 for i_n, n_target in enumerate(n_list):
+    if n_target == n_down[0]:
+        # second sweep: restart from the solution at the first filling
+        fragment.R, fragment.Lambda, mu = start
     print('--------------------------------------------------------')
     print(f'GEM loop started with U={U} and n={n_target}')
 
+    diis = DIIS(nvec)
     gap = 0.0
     for it in range(itmax):
+        seeding = (i_n == 0 and it < nseed)
+        R_in, Lambda_in = fragment.R.copy(), fragment.Lambda.copy()
+
         lattice.solve_qp([fragment], T=0.0, Tsmearing=Tsmearing)
         fragment.update_hybridization(T=0.0)
         if paramagnetic:
@@ -103,18 +129,24 @@ for i_n, n_target in enumerate(n_list):
 
         # a larger d-wave field for the first iterations drives the system
         # to the superconducting solution
-        fragment.eloc = eloc_seed if (i_n == 0 and it < nseed) else eloc_n
+        fragment.eloc = eloc_seed if seeding else eloc_n
         mu = lattice.fit_mu(n_target, [fragment], T=0.0, mu_old=mu,
                             mode='fragment', ntol=1e-8)
 
-        Lambda_old, R_old = fragment.Lambda.copy(), fragment.R.copy()
         fragment.update_self_energy(T=0.0)
         if paramagnetic:
             fragment.impose_nambu_spin_symmetry()
-        diff_LR = max(np.abs(fragment.Lambda - Lambda_old).max(),
-                      np.abs(fragment.R - R_old).max())
-        fragment.Lambda = (1 - mix)*fragment.Lambda + mix*Lambda_old
-        fragment.R = (1 - mix)*fragment.R + mix*R_old
+        R_out, Lambda_out = hermitian_gauge(fragment.R, fragment.Lambda)
+        diff_LR = max(np.abs(R_out - R_in).max(), np.abs(Lambda_out - Lambda_in).max())
+
+        if seeding:
+            # plain mixing while the seed field is on
+            fragment.R = (1 - mix)*R_out + mix*R_in
+            fragment.Lambda = (1 - mix)*Lambda_out + mix*Lambda_in
+        else:
+            x_in, x_out = np.array([R_in, Lambda_in]), np.array([R_out, Lambda_out])
+            diis.append(x_out - x_in, x_out)
+            fragment.R, fragment.Lambda = diis.solve()
 
         gap_old = gap
         _, _, F = nambu_density_matrix(fragment.denMat[:nimp, :nimp])
@@ -122,9 +154,15 @@ for i_n, n_target in enumerate(n_list):
         diff = max(diff_LR, abs(gap - gap_old))
         print(f'iteration: {it}  diff={diff:.2e}  mu={mu:.6f}  '
               f'n={fragment.nfill.real:.6f}  d-wave={gap.real:.6f}')
-        if (diff < tol and it > nseed) or it == itmax - 1:
+        if (diff < tol and not seeding) or it == itmax - 1:
             print(f'--- Exiting after {it}/{itmax} - diff={diff:.2e} ---')
             break
+
+    # keep the last GEM output rather than the DIIS extrapolation; at
+    # convergence the two coincide with the input of the last iteration
+    fragment.R, fragment.Lambda = R_out, Lambda_out
+    if i_n == 0:
+        start = (fragment.R.copy(), fragment.Lambda.copy(), mu)
 
     # Observables
     dm = fragment.denMat[:nimp, :nimp]

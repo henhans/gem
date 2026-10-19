@@ -24,6 +24,7 @@ set(all_tests
   test_save_load_fragment
   test_save_load_lattice
   test_nambu
+  test_diis
 )
 
 foreach(test ${all_tests})

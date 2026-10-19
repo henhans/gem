@@ -5,12 +5,9 @@
 ## Unreleased
 
 * Singlet superconductivity through the Nambu (spin-down particle-hole) transformation: new module `gem.nambu` and `Fragment(..., nambu=True)`.
-* Example E4: d-wave superconductivity of the 2x2 cluster Hubbard model.
-
-## Unreleased
-
-* Singlet superconductivity through the Nambu (spin-down particle-hole) transformation: new module `gem.nambu` and `Fragment(..., nambu=True)`.
-* Example E4: d-wave superconductivity of the 2x2 cluster Hubbard model.
+* `Fragment.impose_nambu_spin_symmetry` to impose a non-magnetic solution on a Nambu fragment.
+* DIIS (Pulay) extrapolation for the self-consistency loop: new module `gem.diis`, adapted from the earlier `triqs_ghostGA` code.
+* Example E4: d-wave superconductivity of the 2x2 cluster Hubbard model, with its figure.
 
 ## Version 1.0.0
 

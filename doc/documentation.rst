@@ -406,3 +406,4 @@ Helper routines used throughout the code:
 * :mod:`gem.delta_fit` — routines to perform thermal density matrix fitting of the hybridisation function and self-energy parameters.
   to a discrete bath.
 * :mod:`gem.mpi` — common helper routines for MPI parallelization.
+* :mod:`gem.diis` — DIIS (Pulay) extrapolation for the self-consistency loop; it also converges to fixed points that are unstable under linear mixing.

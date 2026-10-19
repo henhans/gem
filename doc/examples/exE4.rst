@@ -3,24 +3,27 @@
 E4 — d-wave Superconductivity in the 2x2 Cluster Hubbard Model
 ==============================================================
 
-**Scripts:** ``examples/E4/Square_2x2_dwave_sc.py``
+**Scripts:** ``examples/E4/Square_2x2_dwave_sc.py``, ``examples/E4/plot_dwave.py``
 
 This example computes the d-wave superconducting order parameter of the doped
 Hubbard model on the square lattice at :math:`U = 8|t|`, with a :math:`2\times2`
 cluster fragment at :math:`B = 1` (cluster RISB), as a function of the filling
 :math:`n` (electrons per cluster). It uses the Nambu basis of
-:mod:`gem.nambu` described in :ref:`superconductivity`.
+:mod:`gem.nambu` described in :ref:`superconductivity`, the non-magnetic
+projection :meth:`~gem.fragment.Fragment.impose_nambu_spin_symmetry` and
+DIIS extrapolation from :mod:`gem.diis`.
 
 Setup
 -----
 
 The four sites with two spins give ``nimp = 8`` and ``ntot = 16``. The cluster
 dispersion :math:`\epsilon_{ij}(K) = \sum_R t_{ij}(R) e^{iK\cdot R}` is built on
-an ``nk x nk`` grid of the supercell Brillouin zone; its :math:`K` average, the
-intra-cluster hopping, is moved to ``eloc``. Lattice and local Hamiltonian are
-then transformed to the Nambu basis, the latter with a small d-wave pairing
-field :math:`\Delta_{ij} = \pm h/\sqrt{2}` on the :math:`x` (:math:`+`) and
-:math:`y` (:math:`-`) bonds, which selects the symmetry of the order parameter::
+a :math:`37\times37` grid of the supercell Brillouin zone; its :math:`K`
+average, the intra-cluster hopping, is moved to ``eloc``. Lattice and local
+Hamiltonian are then transformed to the Nambu basis, the latter with a small
+d-wave pairing field :math:`\Delta_{ij} = \pm h/\sqrt{2}`, :math:`h = 10^{-3}`,
+on the :math:`x` (:math:`+`) and :math:`y` (:math:`-`) bonds, which selects
+the symmetry of the order parameter::
 
     eks_n, _ = nambu_one_body(eks)
     lattice = Lattice(eks_n)
@@ -36,37 +39,42 @@ conserves ``Ntot`` only, and the half-filled sector is the physical
 Self-consistency loop
 ---------------------
 
-The loop is the usual one, with the filling fixed by
-``fit_mu(mode='fragment')`` (the quasiparticle mode counts the transformed
-particles, i.e. :math:`S_z`, and is refused for a Nambu fragment). During the
-first ``nseed`` iterations a larger seed field drives the system to the
-superconducting solution::
+The filling is fixed with ``fit_mu(mode='fragment')``: the quasiparticle mode
+counts the transformed particles and is refused for a Nambu fragment. At the
+first filling, :math:`n = 3.6`, the loop starts with ``nseed`` plain mixing
+iterations under a larger seed field; every later filling starts from the
+previous solution, in two sweeps from :math:`n = 3.6`, up to half filling and
+down to :math:`n = 2.9`. One iteration reads::
 
-    for it in range(itmax):
-        lattice.solve_qp([fragment], T=0.0, Tsmearing=Tsmearing)
-        fragment.update_hybridization(T=0.0)
-        fragment.impose_nambu_spin_symmetry()
+    lattice.solve_qp([fragment], T=0.0, Tsmearing=Tsmearing)
+    fragment.update_hybridization(T=0.0)
+    fragment.impose_nambu_spin_symmetry()
+    mu = lattice.fit_mu(n_target, [fragment], T=0.0, mu_old=mu,
+                        mode='fragment', ntol=1e-8)
+    fragment.update_self_energy(T=0.0)
+    fragment.impose_nambu_spin_symmetry()
 
-        fragment.eloc = eloc_seed if (i_n == 0 and it < nseed) else eloc_n
-        mu = lattice.fit_mu(n_target, [fragment], T=0.0, mu_old=mu,
-                            mode='fragment', ntol=1e-8)
-
-        Lambda_old, R_old = fragment.Lambda.copy(), fragment.R.copy()
-        fragment.update_self_energy(T=0.0)
-        fragment.impose_nambu_spin_symmetry()
-
-        fragment.Lambda = (1 - mix)*fragment.Lambda + mix*Lambda_old
-        fragment.R      = (1 - mix)*fragment.R + mix*R_old
+    R_out, Lambda_out = hermitian_gauge(fragment.R, fragment.Lambda)
+    x_in, x_out = np.array([R_in, Lambda_in]), np.array([R_out, Lambda_out])
+    diis.append(x_out - x_in, x_out)
+    fragment.R, fragment.Lambda = diis.solve()
 
 :meth:`~gem.fragment.Fragment.impose_nambu_spin_symmetry` is the Nambu
 counterpart of :meth:`~gem.fragment.Fragment.impose_spin_SU2_symmetry`: it
 projects the parameters onto those invariant under a :math:`\pi` spin rotation,
 which removes magnetization and keeps singlet pairing. It is switched off with
-``paramagnetic = False``. Near half filling the paramagnetic d-wave solution is
-then unstable, and the loop flows to Néel antiferromagnetism coexisting with
-d-wave superconductivity, of lower energy (at :math:`n = 3.6`,
-:math:`E_{tot} = -2.658` instead of :math:`-2.539`, staggered moment
-:math:`0.52`).
+``paramagnetic = False``; near half filling the loop then flows to Néel
+antiferromagnetism coexisting with d-wave superconductivity, of lower energy
+(at :math:`n = 3.6`, :math:`E_{tot} = -2.658` instead of :math:`-2.539`,
+staggered moment :math:`0.52`).
+
+For :math:`n \lesssim 3.4` the paramagnetic d-wave solution is an unstable
+fixed point of plain linear mixing, which leaves it and stalls on a state that
+is not a solution. The :class:`~gem.diis.DIIS` extrapolation over the last
+eight iterates converges to it in about ten iterations. Since DIIS combines
+:math:`R` and :math:`\Lambda` of different iterations, they are first brought
+to a fixed bath gauge, the one in which :math:`R` is Hermitian (polar
+decomposition), which also keeps the spin structure the projection relies on.
 
 Observables
 -----------
@@ -80,51 +88,67 @@ and the interaction has been normal ordered, the physical local energy is::
 
     eloc_phys = fragment.compute_energy() + mu*np.dot(fragment.charge, np.diag(dm)) + e0
 
-The script stores :math:`\mu`, :math:`Z`, the order parameter, the kinetic,
-potential and total energy for every filling in
-``data_Square_2x2_dwave_U8.0.h5``.
+The script stores :math:`\mu`, :math:`Z`, the order parameter, the largest
+local moment, the kinetic, potential and total energy, and the converged
+parameters for every filling in ``data_Square_2x2_dwave_U8.0.h5``;
+``plot_dwave.py`` draws the figure below from it.
 
 Results
 -------
 
-The d-wave order parameter has a dome as a function of filling, with its
-maximum near :math:`n = 3.7` and a remnant at half filling that is induced by
-the field :math:`h = 10^{-3}`. All quantities agree, to the convergence
-tolerance, with an independent full-Nambu cluster-RISB implementation
-(``simple_ga``):
+The whole scan takes about five minutes. Every filling converges to a residual
+below :math:`10^{-7}`, with zero local moment.
+
+.. image:: ./images/figE4.png
+   :width: 70%
+   :align: center
+
+The order parameter forms a dome with its maximum near :math:`n = 0.92` per
+site; the remnant at half filling is induced by the pairing field.
 
 .. list-table::
    :header-rows: 1
 
-   * - :math:`n`
+   * - :math:`n` per site
      - :math:`\mu`
      - :math:`Z`
      - d-wave
      - :math:`E_{tot}`
-   * - 3.6
-     - 2.2486
-     - 0.6088
-     - 0.0786
-     - -2.5391
-   * - 3.7
+   * - 0.725
+     - 1.1995
+     - 0.7519
+     - 0.0034
+     - -3.7921
+   * - 0.775
+     - 1.5576
+     - 0.7135
+     - 0.0079
+     - -3.5160
+   * - 0.825
+     - 1.9169
+     - 0.6687
+     - 0.0313
+     - -3.1686
+   * - 0.875
+     - 2.1572
+     - 0.6222
+     - 0.0706
+     - -2.7591
+   * - 0.925
      - 2.3513
      - 0.6043
      - 0.0799
      - -2.3091
-   * - 3.8
-     - 2.4534
-     - 0.6141
-     - 0.0756
-     - -2.0689
-   * - 3.9
+   * - 0.975
      - 2.5901
      - 0.6400
      - 0.0626
      - -1.8176
-   * - 4.0
+   * - 1.000
      - 4.0000
      - 0.6587
      - 0.0329
      - -1.5229
 
-Details of the comparison are given in ``examples/E4/README.md``.
+The complete table and the tests behind this example are in
+``examples/E4/README.md``.
